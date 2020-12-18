@@ -9,7 +9,7 @@
 #include "../components/gnuboy/sound.h"
 #include "../components/gnuboy/regs.h"
 #include "../components/gnuboy/rtc.h"
-#include "../components/gnuboy/defs.h"
+#include "../components/gnuboy/emu.h"
 
 #define APP_ID 20
 
@@ -24,11 +24,14 @@ static odroid_video_frame_t update1 = {GB_WIDTH, GB_HEIGHT, GB_WIDTH * 2, 2, 0xF
 static odroid_video_frame_t update2 = {GB_WIDTH, GB_HEIGHT, GB_WIDTH * 2, 2, 0xFF, -1, NULL, NULL, 0, {}};
 static odroid_video_frame_t *currentUpdate = &update1;
 
+static rg_app_desc_t *app;
+
 static bool fullFrame = false;
 static uint skipFrames = 0;
 
 static bool netplay = false;
 
+static const char *sramFile;
 static bool saveSRAM = false;
 static int  saveSRAM_Timer = 0;
 // --- MAIN
@@ -56,23 +59,11 @@ static void netplay_callback(netplay_event_t event, void *arg)
 }
 
 
-static inline void screen_blit(void)
-{
-    odroid_video_frame_t *previousUpdate = (currentUpdate == &update1) ? &update2 : &update1;
-
-    fullFrame = odroid_display_queue_update(currentUpdate, previousUpdate) == SCREEN_UPDATE_FULL;
-
-    // swap buffers
-    currentUpdate = previousUpdate;
-    fb.ptr = currentUpdate->buffer;
-}
-
-
 static bool SaveState(char *pathName)
 {
     // For convenience we also write the sram to its own file
     // So that it can be imported in other emulators
-    sram_save();
+    sram_save(sramFile);
 
     return state_save(pathName) == 0;
 }
@@ -83,13 +74,12 @@ static bool LoadState(char *pathName)
     {
         emu_reset();
 
-        if (saveSRAM) sram_load();
+        if (saveSRAM) sram_load(sramFile);
 
         return false;
     }
     return true;
 }
-
 
 static bool palette_update_cb(odroid_dialog_choice_t *option, odroid_dialog_event_t event)
 {
@@ -182,18 +172,32 @@ static bool advanced_settings_cb(odroid_dialog_choice_t *option, odroid_dialog_e
    return false;
 }
 
+static inline void screen_blit(void)
+{
+    odroid_video_frame_t *previousUpdate = (currentUpdate == &update1) ? &update2 : &update1;
+
+    fullFrame = odroid_display_queue_update(currentUpdate, previousUpdate) == SCREEN_UPDATE_FULL;
+
+    // swap buffers
+    currentUpdate = previousUpdate;
+    fb.ptr = currentUpdate->buffer;
+}
+
 void app_main(void)
 {
     odroid_system_init(APP_ID, AUDIO_SAMPLE_RATE);
     odroid_system_emu_init(&LoadState, &SaveState, &netplay_callback);
 
+    app = rg_system_get_app();
+
     update1.buffer = rg_alloc(GB_WIDTH * GB_HEIGHT * 2, MEM_ANY);
     update2.buffer = rg_alloc(GB_WIDTH * GB_HEIGHT * 2, MEM_ANY);
 
     saveSRAM = odroid_settings_app_int32_get(NVS_KEY_SAVE_SRAM, 0);
+	sramFile = rg_emu_get_path(EMU_PATH_SAVE_SRAM, 0);
 
     // Load ROM
-    loader_init(NULL);
+    rom_load(app->romPath);
 
     // RTC
     memset(&rtc, 0, sizeof(rtc));
@@ -216,8 +220,6 @@ void app_main(void)
   	pcm.buf = (n16*)&audioBuffer;
   	pcm.pos = 0;
 
-    rg_app_desc_t *app = odroid_system_get_app();
-
     emu_init();
 
     pal_set_dmg(odroid_settings_Palette_get());
@@ -228,7 +230,7 @@ void app_main(void)
     }
     else if (saveSRAM)
     {
-        sram_load();
+        sram_load(sramFile);
     }
 
     const int frameTime = get_frame_time(60);
@@ -275,7 +277,7 @@ void app_main(void)
             if (saveSRAM_Timer > 0 && --saveSRAM_Timer == 0)
             {
                 // TO DO: Try compressing the sram file, it might reduce stuttering
-                sram_save();
+                sram_save(sramFile);
             }
         }
 

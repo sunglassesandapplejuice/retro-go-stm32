@@ -2,7 +2,7 @@
 #define __HW_H__
 
 
-#include "defs.h"
+#include "emu.h"
 
 
 #define PAD_RIGHT  0x01
@@ -21,17 +21,17 @@
 #define IF_PAD    0x10
 #define IF_MASK   0x1F
 
-struct hw
+typedef struct
 {
 	byte ilines;
 	byte pad;
 	int cgb, gba;
 	int hdma;
 	int serial;
-};
+} hw_t;
 
 
-extern struct hw hw;
+extern hw_t hw;
 
 void hw_hdma();
 void hw_dma(byte b);

@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
 #include <time.h>
 #include <ctype.h>
 #include <assert.h>
 
-#include "defs.h"
+#include "emu.h"
 #include "regs.h"
 #include "mem.h"
 #include "hw.h"
@@ -471,7 +472,7 @@ void gb_loader_restore_cache() {
 
 // TODO: Revisit this later as memory might run out when loading
 
-int IRAM_ATTR rom_loadbank(short bank)
+int IRAM_ATTR rom_loadbank(int bank)
 {
 	const size_t OFFSET = bank * BANK_SIZE;
 
@@ -554,7 +555,7 @@ static void gb_rom_compress_load(){
     memset(cache_ts, 0, sizeof cache_ts);
     memset(gb_rom_comp_bank_offset, 0, sizeof( gb_rom_comp_bank_offset));
     //memset(cache_score,SCORE_DOWN,sizeof cache_score);
-    
+
     uint32_t bank_idx = 0;
 
     switch(rom_comp_type){
@@ -618,7 +619,7 @@ static void gb_rom_compress_load(){
 
             for(bank_idx=0; src_offset < ROM_DATA_LENGTH; bank_idx++){
                 wdog_refresh();
-                size_t src_buf_size = ROM_DATA_LENGTH - src_offset; 
+                size_t src_buf_size = ROM_DATA_LENGTH - src_offset;
                 tinfl_init(&decomp);
 
                 size_t dst_buf_size = available_size;
@@ -657,9 +658,9 @@ static void gb_rom_compress_load(){
 
             for(bank_idx=1; src_offset < ROM_DATA_LENGTH; bank_idx++){
                 wdog_refresh();
-                size_t src_buf_size = ROM_DATA_LENGTH - src_offset; 
+                size_t src_buf_size = ROM_DATA_LENGTH - src_offset;
                 size_t dst_buf_size = available_size;
-                SRes res; 
+                SRes res;
 
                 gb_rom_comp_bank_offset[bank_idx] = src_offset;
 
@@ -672,8 +673,8 @@ static void gb_rom_compress_load(){
                 assert(res == SZ_OK);
                 assert(status == LZMA_STATUS_FINISHED_WITH_MARK);
                 assert(dst_buf_size == BANK_SIZE);
-                
-                src_offset += src_buf_size; 
+
+                src_offset += src_buf_size;
             }
             break;
         }
@@ -778,47 +779,62 @@ static int gb_rom_load()
 }
 
 
-int sram_load()
+void rom_unload(void)
+{
+	for (int i = 0; i < 512; i++) {
+		if (rom.bank[i]) {
+			free(rom.bank[i]);
+			rom.bank[i] = NULL;
+		}
+	}
+	free(ram.sbank);
+
+	mbc.type = mbc.romsize = mbc.ramsize = mbc.batt = mbc.rtc = 0;
+	// ram.sbank = NULL;
+}
+
+
+int sram_load(const char *file)
 {
 	// int ret = -1;
 	// FILE *f;
 
-	// if (!mbc.batt || !sramfile || !*sramfile) return -1;
+    // if (!mbc.batt || !file || !*file) return -1;
 
 	// odroid_system_spi_lock_acquire(SPI_LOCK_SDCARD);
 
-	// if ((f = fopen(sramfile, "rb")))
+	// if ((f = fopen(file, "rb")))
 	// {
-	// 	printf("sram_load: Loading SRAM\n");
-	// 	_fread(ram.sbank, 8192, mbc.ramsize, f);
-	// 	rtc_load(f);
-	// 	fclose(f);
-	// 	ret = 0;
+	// 	printf("sram_load: Loading SRAM from '%s'\n", file);
+	//	fread(ram.sbank, 8192, mbc.ramsize, f);
+	//	rtc_load(f);
+	//	fclose(f);
+	//	ret = 0;
 	// }
 
-	// odroid_system_spi_lock_release(SPI_LOCK_SDCARD);
+    // odroid_system_spi_lock_release(SPI_LOCK_SDCARD);
 	// return ret;
 	return 0;
 }
 
 
-int sram_save()
+int sram_save(const char *file)
 {
 	// int ret = -1;
 	// FILE *f;
 
-	// if (!mbc.batt || !sramfile || !mbc.ramsize) return -1;
+	// if (!mbc.batt || !file || !mbc.ramsize) return -1;
 
 	// odroid_system_spi_lock_acquire(SPI_LOCK_SDCARD);
 
-	// if ((f = fopen(sramfile, "wb")))
+	// if ((f = fopen(file, "wb")))
 	// {
-	// 	printf("sram_load: Saving SRAM\n");
-	// 	_fwrite(ram.sbank, 8192, mbc.ramsize, f);
-	// 	rtc_save(f);
-	// 	fclose(f);
-	// 	ret = 0;
-	// }
+    // 	printf("sram_save: Saving SRAM to '%s'\n", file);
+    // 	fwrite(ram.sbank, 8192, mbc.ramsize, f);
+    // 	rtc_save(f);
+    // 	fclose(f);
+    // 	ret = 0;
+    // }
 
 	// odroid_system_spi_lock_release(SPI_LOCK_SDCARD);
 	// return ret;
@@ -978,29 +994,4 @@ int gb_state_load(const uint8_t *flash_ptr, size_t size)
 	mem_updatemap();
 
 	return 0;
-}
-
-
-
-void loader_unload()
-{
-	sram_save();
-	if (ram.sbank) free(ram.sbank);
-
-	for (int i = 0; i < 512; i++) {
-		if (rom.bank[i]) {
-			free(rom.bank[i]);
-			rom.bank[i] = NULL;
-		}
-	}
-
-	mbc.type = mbc.romsize = mbc.ramsize = mbc.batt = mbc.rtc = 0;
-	// ram.sbank = NULL;
-}
-
-
-void loader_init(char *s)
-{
-	gb_rom_load();
-	// sram_load();
 }
